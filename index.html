@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReviewGuard — Review Moderation</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #65718a;
+      --line: #e2e7ef;
+      --panel: #fff;
+      --blue: #2458d3;
+      --bg: #f4f6fa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    .container {
+      width: min(100% - 32px, 960px);
+      margin: 36px auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    h1 { margin: 0; font-size: 1.8rem; }
+    h2 { margin-top: 0; }
+    .muted { color: var(--muted); }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 18px 0;
+      box-shadow: 0 3px 12px #1b2c4810;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    label { display: block; font-weight: 600; }
+
+    input, select, textarea, button {
+      width: 100%;
+      margin-top: 6px;
+      padding: 10px 12px;
+      border: 1px solid #cbd3df;
+      border-radius: 7px;
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    .full { grid-column: 1 / -1; }
+
+    button {
+      border: 0;
+      background: var(--blue);
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:hover { filter: brightness(.93); }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+
+    .notice {
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: #e9f0ff;
+      margin: 16px 0;
+    }
+
+    .review-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .stars { color: #d18a00; white-space: nowrap; }
+
+    .badge {
+      display: inline-block;
+      border-radius: 99px;
+      padding: 4px 10px;
+      background: #fff1cf;
+      color: #7a5100;
+      font-size: .85rem;
+      white-space: nowrap;
+    }
+
+    .badge.approved { background: #dcf7e6; color: #176434; }
+    .badge.rejected { background: #ffe1e1; color: #8a2525; }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .actions button { width: auto; }
+    .actions .reject { background: #a52c38; }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .toolbar button {
+      width: auto;
+      background: #e9edf5;
+      color: var(--ink);
+    }
+
+    .toolbar button.active { background: var(--blue); color: #fff; }
+
+    .hidden { display: none; }
+
+    @media (max-width: 600px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .form-grid { grid-template-columns: 1fr; }
+      .full { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div>
+        <h1>ReviewGuard</h1>
+        <p class="muted">Fake review detection and moderation demo</p>
+      </div>
+      <button id="moderatorToggle" type="button" style="width:auto">
+        Open moderator view
+      </button>
+    </header>
+
+    <div id="notice" class="notice hidden" role="status"></div>
+
+    <section class="card">
+      <h2>Submit a review</h2>
+      <form id="reviewForm" class="form-grid">
+        <label>
+          Your name
+          <input name="author" maxlength="80" required>
+        </label>
+
+        <label>
+          Product or service
+          <input name="product" maxlength="120" required>
+        </label>
+
+        <label>
+          Rating
+          <select name="rating" required>
+            <option value="">Choose a rating</option>
+            <option value="5">5 stars</option>
+            <option value="4">4 stars</option>
+            <option value="3">3 stars</option>
+            <option value="2">2 stars</option>
+            <option value="1">1 star</option>
+          </select>
+        </label>
+
+        <label class="full">
+          Review
+          <textarea id="reviewText" name="text" maxlength="3000" required></textarea>
+          <small class="muted"><span id="charCount">0</span>/3000 characters</small>
+        </label>
+
+        <button class="full" type="submit">Submit for moderation</button>
+      </form>
+    </section>
+
+    <section id="publicSection">
+      <h2>Approved reviews</h2>
+      <div id="publicReviews"></div>
+    </section>
+
+    <section id="moderatorSection" class="hidden">
+      <section class="card">
+        <h2>Moderation queue</h2>
+        <p class="muted">Risk scores are triage hints. Review each submission before deciding.</p>
+        <div class="toolbar" id="filters">
+          <button type="button" data-filter="pending" class="active">Pending</button>
+          <button type="button" data-filter="approved">Approved</button>
+          <button type="button" data-filter="rejected">Rejected</button>
+          <button type="button" data-filter="all">All</button>
+        </div>
+      </section>
+      <div id="moderatorReviews"></div>
+    </section>
+
+    <footer class="muted">
+      <small>Demo only: reviews are stored in this browser and are not sent to a server.</small>
+    </footer>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "reviewguard_reviews";
+    let currentFilter = "pending";
+
+    const form = document.getElementById("reviewForm");
+    const reviewText = document.getElementById("reviewText");
+    const charCount = document.getElementById("charCount");
+    const notice = document.getElementById("notice");
+
+    function loadReviews() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveReviews(reviews) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(reviews));
+    }
+
+    function escapeHTML(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      })[char]);
+    }
+
+    function scoreReview(text, rating) {
+      let score = 0;
+      const reasons = [];
+      const lower = text.toLowerCase();
+      const words = lower.trim().split(/\s+/).filter(Boolean);
+
+      if (text.length < 25) {
+        score += 15;
+        reasons.push("Very short review");
+      }
+      if (/(.)\1{5,}/u.test(text)) {
+        score += 25;
+        reasons.push("Repeated character pattern");
+      }
+      if (/https?:\/\//i.test(text)) {
+        score += 20;
+        reasons.push("Contains a link");
+      }
+      if (words.length >= 8 && new Set(words).size / words.length < 0.35) {
+        score += 20;
+        reasons.push("Repetitive wording");
+      }
+      if (["buy now", "limited time", "click here", "best price", "discount code"]
+          .some(phrase => lower.includes(phrase))) {
+        score += 20;
+        reasons.push("Promotional language");
+      }
+      if ((rating === 1 || rating === 5) && text.length < 60) {
+        score += 10;
+        reasons.push("Extreme rating with little detail");
+      }
+
+      return {
+        score: Math.min(score, 100),
+        reasons: reasons.length ? reasons : ["No obvious heuristic signals"]
+      };
+    }
+
+    function showNotice(message) {
+      notice.textContent = message;
+      notice.classList.remove("hidden");
+      window.setTimeout(() => notice.classList.add("hidden"), 4000);
+    }
+
+    function reviewCard(review, moderator = false) {
+      const stars = "★".repeat(review.rating) + "☆".repeat(5 - review.rating);
+      const statusClass = review.status;
+
+      return `
+        <article class="card">
+          <div class="review-heading">
+            <strong>${escapeHTML(review.product)}</strong>
+            <span class="stars" aria-label="${review.rating} out of 5 stars">${stars}</span>
+          </div>
+          <p>${escapeHTML(review.text).replace(/\n/g, "<br>")}</p>
+          <p class="muted">By ${escapeHTML(review.author)} · ${escapeHTML(review.date)}</p>
+          ${moderator ? `
+            <p><strong>Heuristic risk: ${review.score}/100</strong> — ${escapeHTML(review.reasons.join(", "))}</p>
+            <span class="badge ${statusClass}">${escapeHTML(review.status)}</span>
+            ${review.status === "pending" ? `
+              <div class="actions">
+                <button type="button" data-id="${review.id}" data-status="approved">Approve</button>
+                <button type="button" class="reject" data-id="${review.id}" data-status="rejected">Reject</button>
+              </div>` : ""}
+          ` : ""}
+        </article>`;
+    }
+
+    function render() {
+      const reviews = loadReviews();
+
+      document.getElementById("publicReviews").innerHTML =
+        reviews.filter(review => review.status === "approved")
+          .map(review => reviewCard(review)).join("") ||
+        '<p class="muted">No reviews have been approved yet.</p>';
+
+      const visible = reviews.filter(review =>
+        currentFilter === "all" || review.status === currentFilter
+      );
+
+      document.getElementById("moderatorReviews").innerHTML =
+        visible.map(review => reviewCard(review, true)).join("") ||
+        '<p class="muted">No reviews in this view.</p>';
+    }
+
+    reviewText.addEventListener("input", () => {
+      charCount.textContent = reviewText.value.length;
+    });
+
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+
+      if (!form.reportValidity()) return;
+
+      const data = new FormData(form);
+      const author = data.get("author").trim();
+      const product = data.get("product").trim();
+      const text = data.get("text").trim();
+      const rating = Number(data.get("rating"));
+
+      if (!author || !product || !text || text.length > 3000) {
+        showNotice("Please complete all fields. Reviews can be up to 3,000 characters.");
+        return;
+      }
+
+      const result = scoreReview(text, rating);
+      const reviews = loadReviews();
+
+      reviews.unshift({
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        author,
+        product,
+        text,
+        rating,
+        score: result.score,
+        reasons: result.reasons,
+        status: "pending",
+        date: new Date().toLocaleString()
+      });
+
+      saveReviews(reviews);
+      form.reset();
+      charCount.textContent = "0";
+      showNotice("Review submitted and held for moderation.");
+      render();
+    });
+
+    document.getElementById("moderatorToggle").addEventListener("click", event => {
+      const section = document.getElementById("moderatorSection");
+      const opening = section.classList.contains("hidden");
+      section.classList.toggle("hidden");
+      document.getElementById("publicSection").classList.toggle("hidden", opening);
+      event.currentTarget.textContent = opening ? "Show public reviews" : "Open moderator view";
+      render();
+    });
+
+    document.getElementById("filters").addEventListener("click", event => {
+      const button = event.target.closest("button[data-filter]");
+      if (!button) return;
+
+      currentFilter = button.dataset.filter;
+      document.querySelectorAll("#filters button").forEach(item =>
+        item.classList.toggle("active", item === button)
+      );
+      render();
+    });
+
+    document.getElementById("moderatorReviews").addEventListener("click", event => {
+      const button = event.target.closest("button[data-status]");
+      if (!button) return;
+
+      const reviews = loadReviews();
+      const review = reviews.find(item => item.id === button.dataset.id);
+      if (!review) return;
+
+      review.status = button.dataset.status;
+      saveReviews(reviews);
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
